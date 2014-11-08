@@ -1,6 +1,6 @@
 /**
  * Angular Carousel - Mobile friendly touch carousel for AngularJS
- * @version v0.3.5 - 2014-11-06
+ * @version v0.3.6 - 2014-11-08
  * @link http://revolunet.github.com/angular-carousel
  * @author Julien Bouquillon <julien@revolunet.com>
  * @license MIT License, http://www.opensource.org/licenses/MIT
@@ -25,12 +25,15 @@ angular.module('angular-carousel')
     restrict: 'A',
     link: function (scope, element, attrs) {
         var delay = Math.round(parseFloat(attrs.rnCarouselAutoSlide) * 1000),
-            timer = increment = false, slidesCount = element.children().length;
+            timer, increment,
+            slidesCount = element.children().length;
+
+        timer = increment = false;
 
         if(!scope.carouselExposedIndex){
             scope.carouselExposedIndex = 0;
         }
-        stopAutoplay = function () {
+        var stopAutoplay = function () {
             if (angular.isDefined(timer)) {
                 $timeout.cancel(timer);
             }
@@ -45,7 +48,7 @@ angular.module('angular-carousel')
             }
         };
 
-        restartTimer = function (){
+        var restartTimer = function (){
             stopAutoplay();
             timer = $timeout(increment, delay);
         };
@@ -55,7 +58,7 @@ angular.module('angular-carousel')
         });
 
         restartTimer();
-        if (attrs.rnCarouselPauseOnHover && attrs.rnCarouselPauseOnHover != 'false'){
+        if (attrs.rnCarouselPauseOnHover && attrs.rnCarouselPauseOnHover !== 'false'){
             element.on('mouseenter', stopAutoplay);
 
             element.on('mouseleave', restartTimer);
@@ -172,14 +175,14 @@ angular.module('angular-carousel').run(['$templateCache', function($templateCach
                 // fallback to default slide if transformProperty is not available
                 style['margin-left'] = absoluteLeft + '%';
             } else {
-                if (transitionType == 'fadeAndSlide') {
+                if (transitionType === 'fadeAndSlide') {
                     style[DeviceCapabilities.transformProperty] = slideTransformValue;
                     opacity = 0;
                     if (Math.abs(absoluteLeft) < 100) {
                         opacity = 0.3 + distance * 0.7;
                     }
                     style.opacity = opacity;
-                } else if (transitionType == 'hexagon') {
+                } else if (transitionType === 'hexagon') {
                     var transformFrom = 100,
                         degrees = 0,
                         maxDegrees = 60 * (distance - 1);
@@ -188,7 +191,7 @@ angular.module('angular-carousel').run(['$templateCache', function($templateCach
                     degrees = offset < (slideIndex * -100) ? maxDegrees : -maxDegrees;
                     style[DeviceCapabilities.transformProperty] = slideTransformValue + ' ' + 'rotateY(' + degrees + 'deg)';
                     style[DeviceCapabilities.transformProperty + '-origin'] = transformFrom + '% 50%';
-                } else if (transitionType == 'zoom') {
+                } else if (transitionType === 'zoom') {
                     style[DeviceCapabilities.transformProperty] = slideTransformValue;
                     var scale = 1;
                     if (Math.abs(absoluteLeft) < 100) {
@@ -238,7 +241,7 @@ angular.module('angular-carousel').run(['$templateCache', function($templateCach
                     return true;
                 });
                 return result;
-            };
+            }
 
             return {
                 restrict: 'A',
@@ -322,15 +325,6 @@ angular.module('angular-carousel').run(['$templateCache', function($templateCach
                                 '</div>';
                             iElement.append($compile(angular.element(tpl))(scope));
                         }
-
-                        $swipe.bind(iElement, {
-                            start: swipeStart,
-                            move: swipeMove,
-                            end: swipeEnd,
-                            cancel: function(event) {
-                                swipeEnd({}, event);
-                            }
-                        });
 
                         function getSlidesDOM() {
                             return iElement[0].querySelectorAll('ul[rn-carousel] > li');
@@ -450,6 +444,60 @@ angular.module('angular-carousel').run(['$templateCache', function($templateCach
                             return false;
                         }
 
+                        function swipeEnd(coords, event, forceAnimation) {
+                            //  console.log('swipeEnd', 'scope.carouselIndex', scope.carouselIndex);
+                            // Prevent clicks on buttons inside slider to trigger "swipeEnd" event on touchend/mouseup
+                            if (event && !swipeMoved) {
+                                return;
+                            }
+
+                            $document.unbind('mouseup', documentMouseUpEvent);
+                            pressed = false;
+                            swipeMoved = false;
+                            destination = startX - coords.x;
+                            if (destination===0) {
+                                return;
+                            }
+                            if (locked) {
+                                return;
+                            }
+                            offset += (-destination * 100 / elWidth);
+                            if (options.isSequential) {
+                                var minMove = options.moveTreshold * elWidth,
+                                    absMove = -destination,
+                                    slidesMove = -Math[absMove >= 0 ? 'ceil' : 'floor'](absMove / elWidth),
+                                    shouldMove = Math.abs(absMove) > minMove;
+
+                                if (currentSlides && (slidesMove + scope.carouselIndex) >= currentSlides.length) {
+                                    slidesMove = currentSlides.length - 1 - scope.carouselIndex;
+                                }
+                                if ((slidesMove + scope.carouselIndex) < 0) {
+                                    slidesMove = -scope.carouselIndex;
+                                }
+                                var moveOffset = shouldMove ? slidesMove : 0;
+
+                                destination = (scope.carouselIndex + moveOffset);
+
+                                goToSlide(destination);
+                            } else {
+                                scope.$apply(function() {
+                                    scope.carouselIndex = parseInt(-offset / 100, 10);
+                                    updateBufferIndex();
+                                });
+
+                            }
+
+                        }
+
+                        $swipe.bind(iElement, {
+                            start: swipeStart,
+                            move: swipeMove,
+                            end: swipeEnd,
+                            cancel: function(event) {
+                                swipeEnd({}, event);
+                            }
+                        });
+
                         var init = true;
                         scope.carouselIndex = 0;
 
@@ -547,50 +595,6 @@ angular.module('angular-carousel').run(['$templateCache', function($templateCach
                             }, true);
                         }
 
-                        function swipeEnd(coords, event, forceAnimation) {
-                            //  console.log('swipeEnd', 'scope.carouselIndex', scope.carouselIndex);
-                            // Prevent clicks on buttons inside slider to trigger "swipeEnd" event on touchend/mouseup
-                            if (event && !swipeMoved) {
-                                return;
-                            }
-
-                            $document.unbind('mouseup', documentMouseUpEvent);
-                            pressed = false;
-                            swipeMoved = false;
-                            destination = startX - coords.x;
-                            if (destination===0) {
-                                return;
-                            }
-                            if (locked) {
-                                return;
-                            }
-                            offset += (-destination * 100 / elWidth);
-                            if (options.isSequential) {
-                                var minMove = options.moveTreshold * elWidth,
-                                    absMove = -destination,
-                                    slidesMove = -Math[absMove >= 0 ? 'ceil' : 'floor'](absMove / elWidth),
-                                    shouldMove = Math.abs(absMove) > minMove;
-
-                                if (currentSlides && (slidesMove + scope.carouselIndex) >= currentSlides.length) {
-                                    slidesMove = currentSlides.length - 1 - scope.carouselIndex;
-                                }
-                                if ((slidesMove + scope.carouselIndex) < 0) {
-                                    slidesMove = -scope.carouselIndex;
-                                }
-                                var moveOffset = shouldMove ? slidesMove : 0;
-
-                                destination = (scope.carouselIndex + moveOffset);
-
-                                goToSlide(destination);
-                            } else {
-                                scope.$apply(function() {
-                                    scope.carouselIndex = parseInt(-offset / 100, 10);
-                                    updateBufferIndex();
-                                });
-
-                            }
-
-                        }
 
                         scope.$on('$destroy', function() {
                             $document.unbind('mouseup', documentMouseUpEvent);
@@ -651,7 +655,9 @@ angular.module('angular-carousel').run(['$templateCache', function($templateCach
     ]);
 })();
 
-
+/* global SHIFTY_DEBUG_NOW */
+/* global define */
+/*jshint -W020 */
 
 angular.module('angular-carousel.shifty', [])
 
@@ -663,6 +669,8 @@ angular.module('angular-carousel.shifty', [])
      * By Jeremy Kahn - jeremyckahn@gmail.com
      */
 
+    'use strict';
+
     // UglifyJS define hack.  Used for unit testing.  Contents of this if are
     // compiled away.
     if (typeof SHIFTY_DEBUG_NOW === 'undefined') {
@@ -672,8 +680,6 @@ angular.module('angular-carousel.shifty', [])
     }
 
     var Tweenable = (function () {
-
-      'use strict';
 
       // Aliases that get defined later in this function
       var formula;

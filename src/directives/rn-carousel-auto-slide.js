@@ -5,12 +5,15 @@ angular.module('angular-carousel')
     restrict: 'A',
     link: function (scope, element, attrs) {
         var delay = Math.round(parseFloat(attrs.rnCarouselAutoSlide) * 1000),
-            timer = increment = false, slidesCount = element.children().length;
+            timer, increment,
+            slidesCount = element.children().length;
+
+        timer = increment = false;
 
         if(!scope.carouselExposedIndex){
             scope.carouselExposedIndex = 0;
         }
-        stopAutoplay = function () {
+        var stopAutoplay = function () {
             if (angular.isDefined(timer)) {
                 $timeout.cancel(timer);
             }
@@ -25,7 +28,7 @@ angular.module('angular-carousel')
             }
         };
 
-        restartTimer = function (){
+        var restartTimer = function (){
             stopAutoplay();
             timer = $timeout(increment, delay);
         };
@@ -35,7 +38,7 @@ angular.module('angular-carousel')
         });
 
         restartTimer();
-        if (attrs.rnCarouselPauseOnHover && attrs.rnCarouselPauseOnHover != 'false'){
+        if (attrs.rnCarouselPauseOnHover && attrs.rnCarouselPauseOnHover !== 'false'){
             element.on('mouseenter', stopAutoplay);
 
             element.on('mouseleave', restartTimer);

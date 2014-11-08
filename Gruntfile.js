@@ -91,7 +91,7 @@ module.exports = function(grunt) {
       }
     },
     jshint: {
-      files: ['Gruntfile.js', '<%= dirs.src %>/*.js', 'test/unit/*.js'],
+      files: ['Gruntfile.js', '<%= dirs.src %>/**/*.js', 'test/unit/*.js'],
       options: {
         curly: false,
         browser: true,
@@ -106,6 +106,8 @@ module.exports = function(grunt) {
         eqnull: true,
         expr: true,
         node: true,
+        laxcomma: true,
+        laxbreak: true,
         globals: {
           exports: true,
           angular: false,

@@ -1,4 +1,6 @@
-
+/* global SHIFTY_DEBUG_NOW */
+/* global define */
+/*jshint -W020 */
 
 angular.module('angular-carousel.shifty', [])
 
@@ -10,6 +12,8 @@ angular.module('angular-carousel.shifty', [])
      * By Jeremy Kahn - jeremyckahn@gmail.com
      */
 
+    'use strict';
+
     // UglifyJS define hack.  Used for unit testing.  Contents of this if are
     // compiled away.
     if (typeof SHIFTY_DEBUG_NOW === 'undefined') {
@@ -19,8 +23,6 @@ angular.module('angular-carousel.shifty', [])
     }
 
     var Tweenable = (function () {
-
-      'use strict';
 
       // Aliases that get defined later in this function
       var formula;

@@ -72,14 +72,14 @@
                 // fallback to default slide if transformProperty is not available
                 style['margin-left'] = absoluteLeft + '%';
             } else {
-                if (transitionType == 'fadeAndSlide') {
+                if (transitionType === 'fadeAndSlide') {
                     style[DeviceCapabilities.transformProperty] = slideTransformValue;
                     opacity = 0;
                     if (Math.abs(absoluteLeft) < 100) {
                         opacity = 0.3 + distance * 0.7;
                     }
                     style.opacity = opacity;
-                } else if (transitionType == 'hexagon') {
+                } else if (transitionType === 'hexagon') {
                     var transformFrom = 100,
                         degrees = 0,
                         maxDegrees = 60 * (distance - 1);
@@ -88,7 +88,7 @@
                     degrees = offset < (slideIndex * -100) ? maxDegrees : -maxDegrees;
                     style[DeviceCapabilities.transformProperty] = slideTransformValue + ' ' + 'rotateY(' + degrees + 'deg)';
                     style[DeviceCapabilities.transformProperty + '-origin'] = transformFrom + '% 50%';
-                } else if (transitionType == 'zoom') {
+                } else if (transitionType === 'zoom') {
                     style[DeviceCapabilities.transformProperty] = slideTransformValue;
                     var scale = 1;
                     if (Math.abs(absoluteLeft) < 100) {
@@ -138,7 +138,7 @@
                     return true;
                 });
                 return result;
-            };
+            }
 
             return {
                 restrict: 'A',
@@ -222,15 +222,6 @@
                                 '</div>';
                             iElement.append($compile(angular.element(tpl))(scope));
                         }
-
-                        $swipe.bind(iElement, {
-                            start: swipeStart,
-                            move: swipeMove,
-                            end: swipeEnd,
-                            cancel: function(event) {
-                                swipeEnd({}, event);
-                            }
-                        });
 
                         function getSlidesDOM() {
                             return iElement[0].querySelectorAll('ul[rn-carousel] > li');
@@ -350,6 +341,60 @@
                             return false;
                         }
 
+                        function swipeEnd(coords, event, forceAnimation) {
+                            //  console.log('swipeEnd', 'scope.carouselIndex', scope.carouselIndex);
+                            // Prevent clicks on buttons inside slider to trigger "swipeEnd" event on touchend/mouseup
+                            if (event && !swipeMoved) {
+                                return;
+                            }
+
+                            $document.unbind('mouseup', documentMouseUpEvent);
+                            pressed = false;
+                            swipeMoved = false;
+                            destination = startX - coords.x;
+                            if (destination===0) {
+                                return;
+                            }
+                            if (locked) {
+                                return;
+                            }
+                            offset += (-destination * 100 / elWidth);
+                            if (options.isSequential) {
+                                var minMove = options.moveTreshold * elWidth,
+                                    absMove = -destination,
+                                    slidesMove = -Math[absMove >= 0 ? 'ceil' : 'floor'](absMove / elWidth),
+                                    shouldMove = Math.abs(absMove) > minMove;
+
+                                if (currentSlides && (slidesMove + scope.carouselIndex) >= currentSlides.length) {
+                                    slidesMove = currentSlides.length - 1 - scope.carouselIndex;
+                                }
+                                if ((slidesMove + scope.carouselIndex) < 0) {
+                                    slidesMove = -scope.carouselIndex;
+                                }
+                                var moveOffset = shouldMove ? slidesMove : 0;
+
+                                destination = (scope.carouselIndex + moveOffset);
+
+                                goToSlide(destination);
+                            } else {
+                                scope.$apply(function() {
+                                    scope.carouselIndex = parseInt(-offset / 100, 10);
+                                    updateBufferIndex();
+                                });
+
+                            }
+
+                        }
+
+                        $swipe.bind(iElement, {
+                            start: swipeStart,
+                            move: swipeMove,
+                            end: swipeEnd,
+                            cancel: function(event) {
+                                swipeEnd({}, event);
+                            }
+                        });
+
                         var init = true;
                         scope.carouselIndex = 0;
 
@@ -447,50 +492,6 @@
                             }, true);
                         }
 
-                        function swipeEnd(coords, event, forceAnimation) {
-                            //  console.log('swipeEnd', 'scope.carouselIndex', scope.carouselIndex);
-                            // Prevent clicks on buttons inside slider to trigger "swipeEnd" event on touchend/mouseup
-                            if (event && !swipeMoved) {
-                                return;
-                            }
-
-                            $document.unbind('mouseup', documentMouseUpEvent);
-                            pressed = false;
-                            swipeMoved = false;
-                            destination = startX - coords.x;
-                            if (destination===0) {
-                                return;
-                            }
-                            if (locked) {
-                                return;
-                            }
-                            offset += (-destination * 100 / elWidth);
-                            if (options.isSequential) {
-                                var minMove = options.moveTreshold * elWidth,
-                                    absMove = -destination,
-                                    slidesMove = -Math[absMove >= 0 ? 'ceil' : 'floor'](absMove / elWidth),
-                                    shouldMove = Math.abs(absMove) > minMove;
-
-                                if (currentSlides && (slidesMove + scope.carouselIndex) >= currentSlides.length) {
-                                    slidesMove = currentSlides.length - 1 - scope.carouselIndex;
-                                }
-                                if ((slidesMove + scope.carouselIndex) < 0) {
-                                    slidesMove = -scope.carouselIndex;
-                                }
-                                var moveOffset = shouldMove ? slidesMove : 0;
-
-                                destination = (scope.carouselIndex + moveOffset);
-
-                                goToSlide(destination);
-                            } else {
-                                scope.$apply(function() {
-                                    scope.carouselIndex = parseInt(-offset / 100, 10);
-                                    updateBufferIndex();
-                                });
-
-                            }
-
-                        }
 
                         scope.$on('$destroy', function() {
                             $document.unbind('mouseup', documentMouseUpEvent);
