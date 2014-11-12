@@ -1,6 +1,6 @@
 /**
  * Angular Carousel - Mobile friendly touch carousel for AngularJS
- * @version v0.3.6 - 2014-11-08
+ * @version v0.3.6 - 2014-11-12
  * @link http://revolunet.github.com/angular-carousel
  * @author Julien Bouquillon <julien@revolunet.com>
  * @license MIT License, http://www.opensource.org/licenses/MIT
@@ -655,7 +655,6 @@ angular.module('angular-carousel').run(['$templateCache', function($templateCach
     ]);
 })();
 
-/* global SHIFTY_DEBUG_NOW */
 /* global define */
 /*jshint -W020 */
 
@@ -663,23 +662,17 @@ angular.module('angular-carousel.shifty', [])
 
 .factory('Tweenable', function() {
 
+  /*! shifty - v1.3.4 - 2014-10-29 - http://jeremyckahn.github.io/shifty */
   (function (root, window) {
+
     /*!
      * Shifty Core
      * By Jeremy Kahn - jeremyckahn@gmail.com
      */
 
-    'use strict';
-
-    // UglifyJS define hack.  Used for unit testing.  Contents of this if are
-    // compiled away.
-    if (typeof SHIFTY_DEBUG_NOW === 'undefined') {
-      SHIFTY_DEBUG_NOW = function () {
-        return +new Date();
-      };
-    }
-
     var Tweenable = (function () {
+
+      'use strict';
 
       // Aliases that get defined later in this function
       var formula;
@@ -690,13 +683,9 @@ angular.module('angular-carousel.shifty', [])
       var DEFAULT_DURATION = 500;
       var UPDATE_TIME = 1000 / 60;
 
-      var _now = Date.now
+      var now = Date.now
            ? Date.now
            : function () {return +new Date();};
-
-      var now = SHIFTY_DEBUG_NOW
-           ? SHIFTY_DEBUG_NOW
-           : _now;
 
       if (typeof window !== 'undefined') {
         // requestAnimationFrame() shim by Paul Irish (modified for Shifty)
@@ -822,6 +811,7 @@ angular.module('angular-carousel.shifty', [])
       var timeoutHandler_endTime;
       var timeoutHandler_currentTime;
       var timeoutHandler_isEnded;
+      var timeoutHandler_offset;
       /*!
        * Handles the update logic for one step of a tween.
        * @param {Tweenable} tweenable
@@ -831,26 +821,30 @@ angular.module('angular-carousel.shifty', [])
        * @param {Object} originalState
        * @param {Object} targetState
        * @param {Object} easing
-       * @param {Function} step
+       * @param {Function(Object, *, number)} step
        * @param {Function(Function,number)}} schedule
        */
       function timeoutHandler (tweenable, timestamp, duration, currentState,
         originalState, targetState, easing, step, schedule) {
         timeoutHandler_endTime = timestamp + duration;
         timeoutHandler_currentTime = Math.min(now(), timeoutHandler_endTime);
-        timeoutHandler_isEnded = timeoutHandler_currentTime >= timeoutHandler_endTime;
+        timeoutHandler_isEnded =
+          timeoutHandler_currentTime >= timeoutHandler_endTime;
+
+        timeoutHandler_offset = duration - (
+            timeoutHandler_endTime - timeoutHandler_currentTime);
 
         if (tweenable.isPlaying() && !timeoutHandler_isEnded) {
-          schedule(tweenable._timeoutHandler, UPDATE_TIME);
+          tweenable._scheduleId = schedule(tweenable._timeoutHandler, UPDATE_TIME);
 
           applyFilter(tweenable, 'beforeTween');
           tweenProps(timeoutHandler_currentTime, currentState, originalState,
             targetState, duration, timestamp, easing);
           applyFilter(tweenable, 'afterTween');
 
-          step(currentState);
+          step(currentState, tweenable._attachment, timeoutHandler_offset);
         } else if (timeoutHandler_isEnded) {
-          step(targetState);
+          step(targetState, tweenable._attachment, timeoutHandler_offset);
           tweenable.stop(true);
         }
       }
@@ -914,7 +908,8 @@ angular.module('angular-carousel.shifty', [])
           this.setConfig(opt_config);
         }
 
-        this._start(this.get());
+        this._timestamp = now();
+        this._start(this.get(), this._attachment);
         return this.resume();
       };
 
@@ -924,10 +919,11 @@ angular.module('angular-carousel.shifty', [])
        * - __from__ (_Object=_): Starting position.  If omitted, the current state is used.
        * - __to__ (_Object=_): Ending position.
        * - __duration__ (_number=_): How many milliseconds to animate for.
-       * - __start__ (_Function(Object)=_): Function to execute when the tween begins.  Receives the state of the tween as the only parameter.
-       * - __step__ (_Function(Object)=_): Function to execute on every tick.  Receives the state of the tween as the only parameter.  This function is not called on the final step of the animation, but `finish` is.
-       * - __finish__ (_Function(Object)=_): Function to execute upon tween completion.  Receives the state of the tween as the only parameter.
+       * - __start__ (_Function(Object)_): Function to execute when the tween begins.  Receives the state of the tween as the first parameter. Attachment is the second parameter.
+       * - __step__ (_Function(Object, *, number)_): Function to execute on every tick.  Receives the state of the tween as the first parameter. Attachment is the second parameter, and the time elapsed since the start of the tween is the third parameter. This function is not called on the final step of the animation, but `finish` is.
+       * - __finish__ (_Function(Object, *)_): Function to execute upon tween completion.  Receives the state of the tween as the first parameter. Attachment is the second parameter.
        * - __easing__ (_Object|string=_): Easing curve name(s) to use for the tween.
+       * - __attachment__ (_Object|string|any=_): Value that is attached to this instance and passed on to the step/start/finish methods.
        * @param {Object} config
        * @return {Tweenable}
        */
@@ -935,8 +931,12 @@ angular.module('angular-carousel.shifty', [])
         config = config || {};
         this._configured = true;
 
+        // Attach something to this Tweenable instance (e.g.: a DOM element, an object, a string, etc.);
+        this._attachment = config.attachment;
+
         // Init the internal state
         this._pausedAtTime = null;
+        this._scheduleId = null;
         this._start = config.start || noop;
         this._step = config.step || noop;
         this._finish = config.finish || noop;
@@ -944,7 +944,6 @@ angular.module('angular-carousel.shifty', [])
         this._currentState = config.from || this.get();
         this._originalState = this.get();
         this._targetState = config.to || this.get();
-        this._timestamp = now();
 
         // Aliases used below
         var currentState = this._currentState;
@@ -1014,6 +1013,33 @@ angular.module('angular-carousel.shifty', [])
       };
 
       /**
+       * Move the state of the animation to a specific point in the tween's timeline.
+       * If the animation is not running, this will cause the `step` handlers to be
+       * called.
+       * @param {millisecond} millisecond The millisecond of the animation to seek to.
+       * @return {Tweenable}
+       */
+      Tweenable.prototype.seek = function (millisecond) {
+        this._timestamp = now() - millisecond;
+
+        if (!this.isPlaying()) {
+          this._isTweening = true;
+          this._isPaused = false;
+
+          // If the animation is not running, call timeoutHandler to make sure that
+          // any step handlers are run.
+          timeoutHandler(this, this._timestamp, this._duration, this._currentState,
+            this._originalState, this._targetState, this._easing, this._step,
+            this._scheduleFunction);
+
+          this._timeoutHandler();
+          this.pause();
+        }
+
+        return this;
+      };
+
+      /**
        * Stops and cancels a tween.
        * @param {boolean=} gotoEnd If false or omitted, the tween just stops at its current state, and the "finish" handler is not invoked.  If true, the tweened object's values are instantly set to the target values, and "finish" is invoked.
        * @return {Tweenable}
@@ -1023,10 +1049,17 @@ angular.module('angular-carousel.shifty', [])
         this._isPaused = false;
         this._timeoutHandler = noop;
 
+        (root.cancelAnimationFrame            ||
+          root.webkitCancelAnimationFrame     ||
+          root.oCancelAnimationFrame          ||
+          root.msCancelAnimationFrame         ||
+          root.mozCancelRequestAnimationFrame ||
+          root.clearTimeout)(this._scheduleId);
+
         if (gotoEnd) {
           shallowCopy(this._currentState, this._targetState);
           applyFilter(this, 'afterTweenEnd');
-          this._finish.call(this, this._currentState);
+          this._finish.call(this, this._currentState, this._attachment);
         }
 
         return this;
@@ -1093,13 +1126,6 @@ angular.module('angular-carousel.shifty', [])
         ,'composeEasingObject': composeEasingObject
       });
 
-      // `root` is provided in the intro/outro files.
-
-      // A hook used for unit testing.
-      if (typeof SHIFTY_DEBUG_NOW === 'function') {
-        root.timeoutHandler = timeoutHandler;
-      }
-
       // Bootstrap Tweenable appropriately for the environment.
       if (typeof exports === 'object') {
         // CommonJS
@@ -1115,8 +1141,9 @@ angular.module('angular-carousel.shifty', [])
       return Tweenable;
 
     } ());
-    
+
     window.Tweenable = Tweenable;
+
     /*!
      * All equations are adapted from Thomas Fuchs' [Scripty2](https://github.com/madrobby/scripty2/blob/master/src/effects/transitions/penner.js).
      *
@@ -1444,20 +1471,18 @@ angular.module('angular-carousel.shifty', [])
        *
        * Example:
        *
-       * ```
-       *  var interpolatedValues = Tweenable.interpolate({
-       *    width: '100px',
-       *    opacity: 0,
-       *    color: '#fff'
-       *  }, {
-       *    width: '200px',
-       *    opacity: 1,
-       *    color: '#000'
-       *  }, 0.5);
+       *     var interpolatedValues = Tweenable.interpolate({
+       *       width: '100px',
+       *       opacity: 0,
+       *       color: '#fff'
+       *     }, {
+       *       width: '200px',
+       *       opacity: 1,
+       *       color: '#000'
+       *     }, 0.5);
        *
-       *  console.log(interpolatedValues);
-       *  // {opacity: 0.5, width: "150px", color: "rgb(127,127,127)"}
-       * ```
+       *     console.log(interpolatedValues);
+       *     // {opacity: 0.5, width: "150px", color: "rgb(127,127,127)"}
        *
        * @param {Object} from The starting values to tween from.
        * @param {Object} targetState The ending values to tween to.
@@ -1498,138 +1523,144 @@ angular.module('angular-carousel.shifty', [])
     /**
      * Adds string interpolation support to Shifty.
      *
-     * The Token extension allows Shifty to tween numbers inside of strings.  Among other things, this allows you to animate CSS properties.  For example, you can do this:
+     * The Token extension allows Shifty to tween numbers inside of strings.  Among
+     * other things, this allows you to animate CSS properties.  For example, you
+     * can do this:
      *
-     * ```
-     * var tweenable = new Tweenable();
-     * tweenable.tween({
-     *   from: { transform: 'translateX(45px)'},
-     *   to: { transform: 'translateX(90xp)'}
-     * });
-     * ```
+     *     var tweenable = new Tweenable();
+     *     tweenable.tween({
+     *       from: { transform: 'translateX(45px)'},
+     *       to: { transform: 'translateX(90xp)'}
+     *     });
      *
+     * ` `
      * `translateX(45)` will be tweened to `translateX(90)`.  To demonstrate:
      *
-     * ```
-     * var tweenable = new Tweenable();
-     * tweenable.tween({
-     *   from: { transform: 'translateX(45px)'},
-     *   to: { transform: 'translateX(90px)'},
-     *   step: function (state) {
-     *     console.log(state.transform);
-     *   }
-     * });
-     * ```
+     *     var tweenable = new Tweenable();
+     *     tweenable.tween({
+     *       from: { transform: 'translateX(45px)'},
+     *       to: { transform: 'translateX(90px)'},
+     *       step: function (state) {
+     *         console.log(state.transform);
+     *       }
+     *     });
      *
+     * ` `
      * The above snippet will log something like this in the console:
      *
-     * ```
-     * translateX(60.3px)
-     * ...
-     * translateX(76.05px)
-     * ...
-     * translateX(90px)
-     * ```
+     *     translateX(60.3px)
+     *     ...
+     *     translateX(76.05px)
+     *     ...
+     *     translateX(90px)
      *
+     * ` `
      * Another use for this is animating colors:
      *
-     * ```
-     * var tweenable = new Tweenable();
-     * tweenable.tween({
-     *   from: { color: 'rgb(0,255,0)'},
-     *   to: { color: 'rgb(255,0,255)'},
-     *   step: function (state) {
-     *     console.log(state.color);
-     *   }
-     * });
-     * ```
+     *     var tweenable = new Tweenable();
+     *     tweenable.tween({
+     *       from: { color: 'rgb(0,255,0)'},
+     *       to: { color: 'rgb(255,0,255)'},
+     *       step: function (state) {
+     *         console.log(state.color);
+     *       }
+     *     });
      *
+     * ` `
      * The above snippet will log something like this:
      *
-     * ```
-     * rgb(84,170,84)
-     * ...
-     * rgb(170,84,170)
-     * ...
-     * rgb(255,0,255)
-     * ```
+     *     rgb(84,170,84)
+     *     ...
+     *     rgb(170,84,170)
+     *     ...
+     *     rgb(255,0,255)
      *
-     * This extension also supports hexadecimal colors, in both long (`#ff00ff`) and short (`#f0f`) forms.  Be aware that hexadecimal input values will be converted into the equivalent RGB output values.  This is done to optimize for performance.
+     * ` `
+     * This extension also supports hexadecimal colors, in both long (`#ff00ff`)
+     * and short (`#f0f`) forms.  Be aware that hexadecimal input values will be
+     * converted into the equivalent RGB output values.  This is done to optimize
+     * for performance.
      *
-     * ```
-     * var tweenable = new Tweenable();
-     * tweenable.tween({
-     *   from: { color: '#0f0'},
-     *   to: { color: '#f0f'},
-     *   step: function (state) {
-     *     console.log(state.color);
-     *   }
-     * });
-     * ```
+     *     var tweenable = new Tweenable();
+     *     tweenable.tween({
+     *       from: { color: '#0f0'},
+     *       to: { color: '#f0f'},
+     *       step: function (state) {
+     *         console.log(state.color);
+     *       }
+     *     });
      *
-     * This snippet will generate the same output as the one before it because equivalent values were supplied (just in hexadecimal form rather than RGB):
+     * ` `
+     * This snippet will generate the same output as the one before it because
+     * equivalent values were supplied (just in hexadecimal form rather than RGB):
      *
-     * ```
-     * rgb(84,170,84)
-     * ...
-     * rgb(170,84,170)
-     * ...
-     * rgb(255,0,255)
-     * ```
+     *     rgb(84,170,84)
+     *     ...
+     *     rgb(170,84,170)
+     *     ...
+     *     rgb(255,0,255)
      *
+     * ` `
+     * ` `
      * ## Easing support
      *
-     * Easing works somewhat differently in the Token extension.  This is because some CSS properties have multiple values in them, and you might need to tween each value along its own easing curve.  A basic example:
+     * Easing works somewhat differently in the Token extension.  This is because
+     * some CSS properties have multiple values in them, and you might need to
+     * tween each value along its own easing curve.  A basic example:
      *
-     * ```
-     * var tweenable = new Tweenable();
-     * tweenable.tween({
-     *   from: { transform: 'translateX(0px) translateY(0px)'},
-     *   to: { transform:   'translateX(100px) translateY(100px)'},
-     *   easing: { transform: 'easeInQuad' },
-     *   step: function (state) {
-     *     console.log(state.transform);
-     *   }
-     * });
-     * ```
+     *     var tweenable = new Tweenable();
+     *     tweenable.tween({
+     *       from: { transform: 'translateX(0px) translateY(0px)'},
+     *       to: { transform:   'translateX(100px) translateY(100px)'},
+     *       easing: { transform: 'easeInQuad' },
+     *       step: function (state) {
+     *         console.log(state.transform);
+     *       }
+     *     });
      *
+     * ` `
      * The above snippet create values like this:
      *
-     * ```
-     * translateX(11.560000000000002px) translateY(11.560000000000002px)
-     * ...
-     * translateX(46.24000000000001px) translateY(46.24000000000001px)
-     * ...
-     * translateX(100px) translateY(100px)
-     * ```
+     *     translateX(11.560000000000002px) translateY(11.560000000000002px)
+     *     ...
+     *     translateX(46.24000000000001px) translateY(46.24000000000001px)
+     *     ...
+     *     translateX(100px) translateY(100px)
      *
-     * In this case, the values for `translateX` and `translateY` are always the same for each step of the tween, because they have the same start and end points and both use the same easing curve.  We can also tween `translateX` and `translateY` along independent curves:
+     * ` `
+     * In this case, the values for `translateX` and `translateY` are always the
+     * same for each step of the tween, because they have the same start and end
+     * points and both use the same easing curve.  We can also tween `translateX`
+     * and `translateY` along independent curves:
      *
-     * ```
-     * var tweenable = new Tweenable();
-     * tweenable.tween({
-     *   from: { transform: 'translateX(0px) translateY(0px)'},
-     *   to: { transform:   'translateX(100px) translateY(100px)'},
-     *   easing: { transform: 'easeInQuad bounce' },
-     *   step: function (state) {
-     *     console.log(state.transform);
-     *   }
-     * });
-     * ```
+     *     var tweenable = new Tweenable();
+     *     tweenable.tween({
+     *       from: { transform: 'translateX(0px) translateY(0px)'},
+     *       to: { transform:   'translateX(100px) translateY(100px)'},
+     *       easing: { transform: 'easeInQuad bounce' },
+     *       step: function (state) {
+     *         console.log(state.transform);
+     *       }
+     *     });
      *
+     * ` `
      * The above snippet create values like this:
      *
-     * ```
-     * translateX(10.89px) translateY(82.355625px)
-     * ...
-     * translateX(44.89000000000001px) translateY(86.73062500000002px)
-     * ...
-     * translateX(100px) translateY(100px)
-     * ```
+     *     translateX(10.89px) translateY(82.355625px)
+     *     ...
+     *     translateX(44.89000000000001px) translateY(86.73062500000002px)
+     *     ...
+     *     translateX(100px) translateY(100px)
      *
-     * `translateX` and `translateY` are not in sync anymore, because `easeInQuad` was specified for `translateX` and `bounce` for `translateY`.  Mixing and matching easing curves can make for some interesting motion in your animations.
+     * ` `
+     * `translateX` and `translateY` are not in sync anymore, because `easeInQuad`
+     * was specified for `translateX` and `bounce` for `translateY`.  Mixing and
+     * matching easing curves can make for some interesting motion in your
+     * animations.
      *
-     * The order of the space-separated easing curves correspond the token values they apply to.  If there are more token values than easing curves listed, the last easing curve listed is used.
+     * The order of the space-separated easing curves correspond the token values
+     * they apply to.  If there are more token values than easing curves listed,
+     * the last easing curve listed is used.
      */
     function token () {
       // Functionality for this extension runs implicitly if it is loaded.
@@ -2040,6 +2071,7 @@ angular.module('angular-carousel.shifty', [])
   }(this, window));
 
   return window.Tweenable;
+
 });
 
 (function() {
