@@ -26,11 +26,9 @@ angular.module('angular-carousel.shifty', [])
       var DEFAULT_DURATION = 500;
       var UPDATE_TIME = 1000 / 60;
 
-      var _now = Date.now
+      var now = Date.now
            ? Date.now
            : function () {return +new Date();};
-
-      var now = typeof SHIFTY_DEBUG_NOW !== 'undefined' ? SHIFTY_DEBUG_NOW : _now;
 
       if (typeof window !== 'undefined') {
         // requestAnimationFrame() shim by Paul Irish (modified for Shifty)
@@ -470,13 +468,6 @@ angular.module('angular-carousel.shifty', [])
         ,'defaults': defaults
         ,'composeEasingObject': composeEasingObject
       });
-
-      // `root` is provided in the intro/outro files.
-
-      // A hook used for unit testing.
-      if (typeof SHIFTY_DEBUG_NOW === 'function') {
-        root.timeoutHandler = timeoutHandler;
-      }
 
       // Bootstrap Tweenable appropriately for the environment.
       if (typeof exports === 'object') {
